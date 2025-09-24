@@ -1,0 +1,42 @@
+# Build directories
+target/
+build/
+out/
+bin/
+
+# IDE files
+.idea/
+*.iml
+.vscode/settings.json
+.settings/
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+*.env.local
+
+# Logs
+*.log
+logs/
+
+# Compiled files
+*.class
+*.jar
+*.war
+
+# Maven
+dependency-reduced-pom.xml
+.mvn/
+
+# LEBO Database credentials - IMPORTANT!
+**/database_templates_local.json
+**/passwords.txt
+config/credentials.properties
+
+# JavaFX runtime
+javafx-sdk*/

@@ -1,0 +1,44 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Launch JasperReports Desktop",
+            "request": "launch",
+            "mainClass": "de.reports.JasperReportsApp",
+            "projectName": "jasper-reports-desktop",
+            "vmArgs": [
+                "--module-path", "${env:PATH_TO_FX}",
+                "--add-modules", "javafx.controls,javafx.fxml",
+                "--add-opens", "javafx.graphics/javafx.scene=ALL-UNNAMED",
+                "--add-opens", "javafx.controls/javafx.scene.control=ALL-UNNAMED",
+                "--add-opens", "javafx.base/javafx.collections=ALL-UNNAMED",
+                "-Dfile.encoding=UTF-8"
+            ],
+            "args": [],
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}",
+            "env": {}
+        },
+        {
+            "type": "java",
+            "name": "Debug JasperReports Desktop",
+            "request": "launch",
+            "mainClass": "de.reports.JasperReportsApp",
+            "projectName": "jasper-reports-desktop",
+            "vmArgs": [
+                "--module-path", "${env:PATH_TO_FX}",
+                "--add-modules", "javafx.controls,javafx.fxml",
+                "--add-opens", "javafx.graphics/javafx.scene=ALL-UNNAMED",
+                "--add-opens", "javafx.controls/javafx.scene.control=ALL-UNNAMED",
+                "--add-opens", "javafx.base/javafx.collections=ALL-UNNAMED",
+                "-Dfile.encoding=UTF-8",
+                "-Dlogging.level.de.reports=DEBUG"
+            ],
+            "args": [],
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}",
+            "env": {}
+        }
+    ]
+}

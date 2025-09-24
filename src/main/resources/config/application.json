@@ -1,0 +1,49 @@
+{
+  "application": {
+    "name": "JasperReports Desktop",
+    "version": "1.0.0",
+    "defaultLanguage": "de",
+    "supportedLanguages": ["de", "en"]
+  },
+  "ui": {
+    "defaultTheme": "light",
+    "windowWidth": 1200,
+    "windowHeight": 800,
+    "minWindowWidth": 800,
+    "minWindowHeight": 600
+  },
+  "database": {
+    "connectionTimeout": 30000,
+    "queryTimeout": 60000,
+    "maxPoolSize": 10,
+    "defaultPort": {
+      "mysql": 3306,
+      "postgresql": 5432,
+      "sqlserver": 1433,
+      "oracle": 1521
+    }
+  },
+  "reports": {
+    "defaultPageSize": "A4",
+    "defaultOrientation": "PORTRAIT",
+    "defaultFont": "Arial",
+    "defaultFontSize": 10,
+    "maxRecordsPerReport": 50000,
+    "tempDirectory": "./temp",
+    "previewRecords": 10
+  },
+  "export": {
+    "defaultFormats": ["PDF", "EXCEL", "HTML"],
+    "compressionLevel": 6,
+    "imageQuality": 0.8
+  },
+  "security": {
+    "encryptPasswords": true,
+    "sessionTimeout": 3600000
+  },
+  "logging": {
+    "level": "INFO",
+    "maxFileSize": "10MB",
+    "maxFiles": 5
+  }
+}
