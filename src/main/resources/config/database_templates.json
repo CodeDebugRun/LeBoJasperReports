@@ -1,24 +1,6 @@
 {
   "templates": [
     {
-      "name": "MySQL Local",
-      "type": "mysql",
-      "host": "localhost",
-      "port": 3306,
-      "database": "test",
-      "driverClass": "com.mysql.cj.jdbc.Driver",
-      "urlTemplate": "jdbc:mysql://{host}:{port}/{database}?useSSL=false&serverTimezone=UTC"
-    },
-    {
-      "name": "PostgreSQL Local",
-      "type": "postgresql",
-      "host": "localhost",
-      "port": 5432,
-      "database": "postgres",
-      "driverClass": "org.postgresql.Driver",
-      "urlTemplate": "jdbc:postgresql://{host}:{port}/{database}"
-    },
-    {
       "name": "SQL Server Local",
       "type": "sqlserver",
       "host": "localhost",
@@ -28,16 +10,7 @@
       "urlTemplate": "jdbc:sqlserver://{host}:{port};databaseName={database};encrypt=false"
     },
     {
-      "name": "Oracle Local",
-      "type": "oracle",
-      "host": "localhost",
-      "port": 1521,
-      "database": "XE",
-      "driverClass": "oracle.jdbc.OracleDriver",
-      "urlTemplate": "jdbc:oracle:thin:@{host}:{port}:{database}"
-    },
-    {
-      "name": "LEBO Database (from existing project)",
+      "name": "LEBO Database",
       "type": "sqlserver",
       "host": "localhost",
       "port": 1433,

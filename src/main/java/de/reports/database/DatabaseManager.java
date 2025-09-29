@@ -321,69 +321,45 @@ public class DatabaseManager {
     private boolean isSystemTable(String tableName, String dbType) {
         String lowerTableName = tableName.toLowerCase();
 
-        switch (dbType.toLowerCase()) {
-            case "mysql":
-                return lowerTableName.startsWith("information_schema") ||
-                       lowerTableName.startsWith("performance_schema") ||
-                       lowerTableName.startsWith("mysql") ||
-                       lowerTableName.startsWith("sys");
-
-            case "postgresql":
-                return lowerTableName.startsWith("information_schema") ||
-                       lowerTableName.startsWith("pg_");
-
-            case "sqlserver":
-                return lowerTableName.startsWith("sys") ||
-                       lowerTableName.startsWith("information_schema") ||
-                       lowerTableName.startsWith("msreplication") ||
-                       lowerTableName.startsWith("mspeer") ||
-                       lowerTableName.startsWith("msdistribution") ||
-                       lowerTableName.startsWith("mssubscription") ||
-                       lowerTableName.startsWith("msmerge") ||
-                       lowerTableName.startsWith("mssnapshot") ||
-                       lowerTableName.startsWith("mslog") ||
-                       lowerTableName.startsWith("msdb") ||
-                       lowerTableName.startsWith("master") ||
-                       lowerTableName.startsWith("model") ||
-                       lowerTableName.startsWith("tempdb") ||
-                       lowerTableName.startsWith("trace_xe") ||
-                       lowerTableName.startsWith("fn_") ||
-                       lowerTableName.startsWith("dm_") ||
-                       lowerTableName.equals("dtproperties") ||
-                       lowerTableName.equals("spt_fallback_db") ||
-                       lowerTableName.equals("spt_fallback_dev") ||
-                       lowerTableName.equals("spt_fallback_usg") ||
-                       lowerTableName.equals("spt_monitor") ||
-                       lowerTableName.equals("MSreplication_options");
-
-            case "oracle":
-                return lowerTableName.startsWith("sys") ||
-                       lowerTableName.startsWith("dba_") ||
-                       lowerTableName.startsWith("all_") ||
-                       lowerTableName.startsWith("user_");
-
-            default:
-                return false;
+        // Only support SQL Server now
+        if ("sqlserver".equals(dbType.toLowerCase())) {
+            return lowerTableName.startsWith("sys") ||
+                   lowerTableName.startsWith("information_schema") ||
+                   lowerTableName.startsWith("msreplication") ||
+                   lowerTableName.startsWith("mspeer") ||
+                   lowerTableName.startsWith("msdistribution") ||
+                   lowerTableName.startsWith("mssubscription") ||
+                   lowerTableName.startsWith("msmerge") ||
+                   lowerTableName.startsWith("mssnapshot") ||
+                   lowerTableName.startsWith("mslog") ||
+                   lowerTableName.startsWith("msdb") ||
+                   lowerTableName.startsWith("master") ||
+                   lowerTableName.startsWith("model") ||
+                   lowerTableName.startsWith("tempdb") ||
+                   lowerTableName.startsWith("trace_xe") ||
+                   lowerTableName.startsWith("fn_") ||
+                   lowerTableName.startsWith("dm_") ||
+                   lowerTableName.equals("dtproperties") ||
+                   lowerTableName.equals("spt_fallback_db") ||
+                   lowerTableName.equals("spt_fallback_dev") ||
+                   lowerTableName.equals("spt_fallback_usg") ||
+                   lowerTableName.equals("spt_monitor") ||
+                   lowerTableName.equals("MSreplication_options");
         }
+
+        return false;
     }
 
     private String buildSampleDataQuery(String tableName, int maxRows) {
         String dbType = connectionInfo.getType().toLowerCase();
 
-        switch (dbType) {
-            case "mysql":
-            case "postgresql":
-                return "SELECT * FROM " + tableName + " LIMIT " + maxRows;
-
-            case "sqlserver":
-                return "SELECT TOP " + maxRows + " * FROM " + tableName;
-
-            case "oracle":
-                return "SELECT * FROM " + tableName + " WHERE ROWNUM <= " + maxRows;
-
-            default:
-                return "SELECT * FROM " + tableName;
+        // Only support SQL Server now
+        if ("sqlserver".equals(dbType)) {
+            return "SELECT TOP " + maxRows + " * FROM " + tableName;
         }
+
+        // Fallback for any other database type
+        return "SELECT * FROM " + tableName;
     }
 
     // Getters
@@ -397,5 +373,143 @@ public class DatabaseManager {
 
     public DataSource getDataSource() {
         return dataSource;
+    }
+
+    /**
+     * Get filtered data count from table
+     */
+    public long getFilteredRecordCount(String tableName, String whereClause) {
+        if (!isConnected || dataSource == null) {
+            logger.warn("Not connected to database");
+            return 0;
+        }
+
+        String query = "SELECT COUNT(*) FROM " + tableName;
+        if (whereClause != null && !whereClause.trim().isEmpty()) {
+            // Remove "WHERE" prefix if exists
+            String cleanWhereClause = whereClause.trim();
+            if (cleanWhereClause.toUpperCase().startsWith("WHERE ")) {
+                cleanWhereClause = cleanWhereClause.substring(6);
+            }
+            query += " WHERE " + cleanWhereClause;
+        }
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(query);
+             ResultSet resultSet = statement.executeQuery()) {
+
+            if (resultSet.next()) {
+                long count = resultSet.getLong(1);
+                logger.info("Filtered count for table {} with filter '{}': {} records",
+                    tableName, whereClause, count);
+                return count;
+            }
+
+        } catch (SQLException e) {
+            logger.error("Failed to get filtered record count for table: {} with filter: {}",
+                tableName, whereClause, e);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Get filtered sample data from table with smart loading
+     */
+    public FilteredDataResult getFilteredData(String tableName, String whereClause,
+                                            int offset, int maxRows) {
+        if (!isConnected || dataSource == null) {
+            logger.warn("Not connected to database");
+            return new FilteredDataResult(false, "Not connected to database", 0, null);
+        }
+
+        try {
+            // First get total count
+            long totalCount = getFilteredRecordCount(tableName, whereClause);
+
+            // Build paginated query
+            String query = buildFilteredQuery(tableName, whereClause, offset, maxRows);
+
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement(query);
+                 ResultSet resultSet = statement.executeQuery()) {
+
+                List<Map<String, Object>> data = new ArrayList<>();
+                ResultSetMetaData metaData = resultSet.getMetaData();
+                int columnCount = metaData.getColumnCount();
+
+                while (resultSet.next() && data.size() < maxRows) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+
+                    for (int i = 1; i <= columnCount; i++) {
+                        String columnName = metaData.getColumnName(i);
+                        Object value = resultSet.getObject(i);
+                        row.put(columnName, value);
+                    }
+
+                    data.add(row);
+                }
+
+                logger.info("Retrieved {} filtered rows from table {} (total: {})",
+                    data.size(), tableName, totalCount);
+
+                return new FilteredDataResult(true, "Success", totalCount, data);
+
+            }
+
+        } catch (SQLException e) {
+            String errorMsg = "Failed to get filtered data from table: " + tableName;
+            logger.error(errorMsg, e);
+            return new FilteredDataResult(false, errorMsg, 0, null);
+        }
+    }
+
+    private String buildFilteredQuery(String tableName, String whereClause, int offset, int maxRows) {
+        StringBuilder query = new StringBuilder("SELECT * FROM ").append(tableName);
+
+        // Add WHERE clause
+        if (whereClause != null && !whereClause.trim().isEmpty()) {
+            String cleanWhereClause = whereClause.trim();
+            if (cleanWhereClause.toUpperCase().startsWith("WHERE ")) {
+                cleanWhereClause = cleanWhereClause.substring(6);
+            }
+            query.append(" WHERE ").append(cleanWhereClause);
+        }
+
+        // Add pagination (SQL Server style)
+        String dbType = connectionInfo.getType().toLowerCase();
+        if ("sqlserver".equals(dbType)) {
+            query.append(" ORDER BY (SELECT NULL) OFFSET ").append(offset)
+                 .append(" ROWS FETCH NEXT ").append(maxRows).append(" ROWS ONLY");
+        } else {
+            // Fallback for other databases
+            query.append(" LIMIT ").append(maxRows).append(" OFFSET ").append(offset);
+        }
+
+        return query.toString();
+    }
+
+    /**
+     * Result class for filtered data with metadata
+     */
+    public static class FilteredDataResult {
+        private final boolean success;
+        private final String message;
+        private final long totalCount;
+        private final List<Map<String, Object>> data;
+
+        public FilteredDataResult(boolean success, String message, long totalCount,
+                                List<Map<String, Object>> data) {
+            this.success = success;
+            this.message = message;
+            this.totalCount = totalCount;
+            this.data = data;
+        }
+
+        public boolean isSuccess() { return success; }
+        public String getMessage() { return message; }
+        public long getTotalCount() { return totalCount; }
+        public List<Map<String, Object>> getData() { return data; }
+        public int getCurrentCount() { return data != null ? data.size() : 0; }
     }
 }

@@ -333,4 +333,199 @@ public class TableSelectionPanel {
     public Node getNode() {
         return container;
     }
+
+    /**
+     * Show filtered data in preview table with smart loading
+     */
+    public void showFilteredData(String tableName, String whereClause) {
+        if (databaseManager == null || !databaseManager.isConnected()) {
+            updateStatus("Nicht mit Datenbank verbunden");
+            return;
+        }
+
+        this.selectedTableName = tableName;
+        setLoading(true);
+
+        Task<DatabaseManager.FilteredDataResult> task = new Task<>() {
+            @Override
+            protected DatabaseManager.FilteredDataResult call() {
+                return databaseManager.getFilteredData(tableName, whereClause, 0, 2000);
+            }
+        };
+
+        task.setOnSucceeded(event -> {
+            Platform.runLater(() -> {
+                DatabaseManager.FilteredDataResult result = task.getValue();
+                handleFilteredDataResult(result, whereClause);
+                setLoading(false);
+            });
+        });
+
+        task.setOnFailed(event -> {
+            Platform.runLater(() -> {
+                Throwable exception = task.getException();
+                logger.error("Failed to load filtered data", exception);
+                updateStatus("Fehler beim Laden der gefilterten Daten: " + exception.getMessage());
+                setLoading(false);
+            });
+        });
+
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void handleFilteredDataResult(DatabaseManager.FilteredDataResult result, String whereClause) {
+        if (!result.isSuccess()) {
+            updateStatus("Fehler: " + result.getMessage());
+            return;
+        }
+
+        long totalCount = result.getTotalCount();
+        int currentCount = result.getCurrentCount();
+
+        // Smart Loading Logic
+        if (totalCount == 0) {
+            updateStatus("Keine Datensätze gefunden für die angegebenen Filter");
+            clearPreviewTable();
+            return;
+        }
+
+        if (totalCount > 10000) {
+            updateStatus(String.format("WARNUNG: %,d Datensätze gefunden! Bitte Filter eingrenzen (zu viele Ergebnisse)", totalCount));
+            showFilterWarningDialog(totalCount);
+            return;
+        }
+
+        if (totalCount <= 2000) {
+            // Load all data
+            updateStatus(String.format("Filter aktiv: %,d Datensätze geladen (alle angezeigt)", totalCount));
+            updateFilteredPreviewTable(result.getData());
+        } else {
+            // Partial load with "Load More" option
+            updateStatus(String.format("Filter aktiv: %,d von %,d Datensätzen geladen", currentCount, totalCount));
+            updateFilteredPreviewTable(result.getData());
+            showLoadMoreButton(whereClause, currentCount, totalCount);
+        }
+    }
+
+    private void updateFilteredPreviewTable(List<Map<String, Object>> data) {
+        if (data == null || data.isEmpty()) {
+            clearPreviewTable();
+            return;
+        }
+
+        Platform.runLater(() -> {
+            // Clear existing columns
+            previewTableView.getColumns().clear();
+
+            // Get column names from first row
+            Map<String, Object> firstRow = data.get(0);
+            for (String columnName : firstRow.keySet()) {
+                TableColumn<Map<String, Object>, Object> column = new TableColumn<>(columnName);
+                column.setCellValueFactory(cellData -> {
+                    Object value = cellData.getValue().get(columnName);
+                    return new javafx.beans.property.SimpleObjectProperty<>(value);
+                });
+                column.setPrefWidth(120);
+                previewTableView.getColumns().add(column);
+            }
+
+            // Convert to observable list
+            ObservableList<Map<String, Object>> observableData = FXCollections.observableArrayList(data);
+            previewTableView.setItems(observableData);
+        });
+    }
+
+    private void clearPreviewTable() {
+        Platform.runLater(() -> {
+            previewTableView.getColumns().clear();
+            previewTableView.setItems(FXCollections.observableArrayList());
+        });
+    }
+
+    private void showFilterWarningDialog(long totalCount) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Zu viele Ergebnisse");
+            alert.setHeaderText(String.format("%,d Datensätze gefunden", totalCount));
+            alert.setContentText("Bitte schränken Sie Ihre Filter ein, um die Leistung zu verbessern.\n\n" +
+                               "Empfohlen: Weniger als 10.000 Datensätze");
+
+            ButtonType restrictFilters = new ButtonType("Filter einschränken");
+            ButtonType forceLoad = new ButtonType("Trotzdem laden (kann langsam sein)");
+            ButtonType cancel = new ButtonType("Abbrechen", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+            alert.getButtonTypes().setAll(restrictFilters, forceLoad, cancel);
+            alert.showAndWait();
+        });
+    }
+
+    private void showLoadMoreButton(String whereClause, int currentCount, long totalCount) {
+        // This would be implemented to show a "Load More" button
+        // For now, just log the need for it
+        logger.info("Need to implement Load More button: {}/{} loaded", currentCount, totalCount);
+        // TODO: Add "Load More" button to UI
+    }
+
+    /**
+     * Load original table preview data without filters
+     */
+    private void loadTablePreview(String tableName) {
+        if (databaseManager == null || !databaseManager.isConnected()) {
+            updateStatus("Nicht mit Datenbank verbunden");
+            return;
+        }
+
+        updateStatus("Lade ursprüngliche Daten für: " + tableName);
+        setLoading(true);
+
+        Task<Void> loadPreviewTask = new Task<Void>() {
+            @Override
+            protected Void call() throws Exception {
+                logger.info("Loading original preview data for table: {}", tableName);
+
+                // Load original preview data (first 100 rows, no filters)
+                QueryResult previewData = databaseManager.executeQuery(
+                    "SELECT TOP 100 * FROM " + tableName
+                );
+
+                Platform.runLater(() -> {
+                    // Update preview table with original data
+                    setupPreviewTableColumns(previewData);
+                    ObservableList<Map<String, Object>> previewRows = FXCollections.observableArrayList(previewData.getData());
+                    previewTableView.setItems(previewRows);
+
+                    updateStatus("Filter entfernt - " + previewData.getData().size() + " ursprüngliche Datensätze angezeigt");
+                    setLoading(false);
+                });
+
+                return null;
+            }
+
+            @Override
+            protected void failed() {
+                Platform.runLater(() -> {
+                    updateStatus("Fehler beim Laden der ursprünglichen Daten: " + getException().getMessage());
+                    setLoading(false);
+                    logger.error("Failed to load original preview data for table: " + tableName, getException());
+                });
+            }
+        };
+
+        Thread loadThread = new Thread(loadPreviewTask);
+        loadThread.setDaemon(true);
+        loadThread.start();
+    }
+
+    /**
+     * Clear any active filters and show original table data
+     */
+    public void clearFilters() {
+        if (selectedTableName != null) {
+            loadTablePreview(selectedTableName);
+        } else {
+            updateStatus("Filter entfernt");
+        }
+    }
 }

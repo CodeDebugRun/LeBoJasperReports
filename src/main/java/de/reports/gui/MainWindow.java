@@ -206,6 +206,22 @@ public class MainWindow {
             }
         });
 
+        // Listen for filter changes from ReportDesignPanel
+        reportPanel.setOnFilterChanged(whereClause -> {
+            String currentTable = reportPanel.getReportConfiguration() != null ?
+                reportPanel.getReportConfiguration().getTableName() : null;
+
+            if (currentTable != null && whereClause != null && !whereClause.trim().isEmpty()) {
+                // Show filtered data in TableSelectionPanel
+                tablePanel.showFilteredData(currentTable, whereClause);
+                updateStatus("Filter angewendet - gefilterte Daten werden angezeigt");
+            } else if (currentTable != null) {
+                // Clear filters and show original data
+                tablePanel.clearFilters();
+                updateStatus("Filter entfernt - ursprüngliche Daten angezeigt");
+            }
+        });
+
         formatPanel.setOnFormatConfigured(configured -> {
             Tab exportTab = tabPane.getTabs().get(4);
             exportTab.setDisable(!configured); // Export preview tab
