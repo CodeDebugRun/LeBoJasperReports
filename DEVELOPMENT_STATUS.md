@@ -11,16 +11,16 @@
 - ✅ Vollständige Maven-Projektstruktur erstellt
 - ✅ `pom.xml` mit allen notwendigen Dependencies konfiguriert:
   - JasperReports Community Edition 6.20.6
-  - JavaFX 19
-  - JDBC Drivers (MySQL, PostgreSQL, SQL Server, Oracle)
+  - JavaFX 19.
+  - JDBC Drivers (MySQL, PostgreSQL, SQL Server, Oracle).
   - HikariCP Connection Pooling
   - Jackson JSON, Logback, Jasypt Encryption
 - ✅ Build-Skripte erstellt (`build.bat`, `run.bat`, `test.bat`)
 
 ### 2. Internationalisierung (i18n)
-- ✅ Deutsche Sprachdatei (`messages_de.properties`) - 220+ Übersetzungen
-- ✅ Englische Sprachdatei (`messages_en.properties`) - vollständig übersetzt
-- ✅ `MessageBundle.java` - Sprachverwaltung implementiert
+- ✅ Deutsche Sprachdatei (`messages_de.properties`) - 220+ Übersetzungen.
+- ✅ Englische Sprachdatei (`messages_en.properties`) - vollständig übersetzt.
+- ✅ `MessageBundle.java` - Sprachverwaltung implementiert.
 
 ### 3. Konfiguration und Templates
 - ✅ `application.json` - Vollständige App-Konfiguration
