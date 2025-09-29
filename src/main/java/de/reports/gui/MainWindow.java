@@ -192,7 +192,7 @@ public class MainWindow {
             if (tableName != null && !tableName.isEmpty()) {
                 Tab designTab = tabPane.getTabs().get(2);
                 designTab.setDisable(false); // Report design tab
-                reportPanel.setSelectedTable(tableName, tablePanel.getTableColumns());
+                reportPanel.setSelectedTable(tableName, tablePanel.getCurrentTableColumns());
                 updateStatus(MessageBundle.getMessage("status.table.selected", tableName));
             }
         });

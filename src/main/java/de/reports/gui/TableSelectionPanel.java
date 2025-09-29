@@ -3,38 +3,51 @@ package de.reports.gui;
 import de.reports.database.ColumnInfo;
 import de.reports.database.DatabaseManager;
 import de.reports.database.QueryResult;
+import de.reports.gui.components.PaginationComponent;
+import de.reports.gui.components.TableListComponent;
+import de.reports.gui.components.TablePreviewComponent;
 import de.reports.i18n.MessageBundle;
 import javafx.application.Platform;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
-import javafx.scene.control.*;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.layout.HBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.layout.VBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
+/**
+ * TableSelectionPanel - Main coordinator for table selection functionality
+ *
+ * This is the refactored main panel that coordinates between:
+ * - TableListComponent (table list and search)
+ * - TablePreviewComponent (data preview with pagination)
+ * - Component communication and state management
+ *
+ * Responsibilities:
+ * - Component coordination and communication
+ * - Database manager distribution
+ * - Public API for external components
+ * - Status management
+ */
 public class TableSelectionPanel {
     private static final Logger logger = LoggerFactory.getLogger(TableSelectionPanel.class);
 
+    // UI Components
     private VBox container;
-    private ListView<String> tableListView;
-    private TableView<ColumnInfo> columnTableView;
-    private TableView<Map<String, Object>> previewTableView;
-    private TextField searchField;
-    private Button refreshButton;
+    private Label titleLabel;
     private Label statusLabel;
     private ProgressIndicator progressIndicator;
 
+    // Modular Components
+    private TableListComponent tableListComponent;
+    private TablePreviewComponent tablePreviewComponent;
+
+    // State
     private DatabaseManager databaseManager;
     private Consumer<String> onTableSelected;
     private List<ColumnInfo> currentTableColumns;
@@ -43,7 +56,7 @@ public class TableSelectionPanel {
     public TableSelectionPanel() {
         initializeComponents();
         setupLayout();
-        setupEventHandlers();
+        setupComponentCommunication();
     }
 
     private void initializeComponents() {
@@ -52,156 +65,48 @@ public class TableSelectionPanel {
         container.setSpacing(15);
 
         // Title
-        Label titleLabel = new Label(MessageBundle.getMessage("table.selection.title"));
+        titleLabel = new Label(MessageBundle.getMessage("table.selection.title"));
         titleLabel.getStyleClass().add("section-title");
 
-        // Search and refresh controls
-        HBox controlsBox = new HBox(10);
-        searchField = new TextField();
-        searchField.setPromptText(MessageBundle.getMessage("table.search.prompt"));
-        searchField.setPrefWidth(200);
+        // Status
+        statusLabel = new Label(MessageBundle.getMessage("status.ready"));
+        statusLabel.getStyleClass().add("status-label");
 
-        refreshButton = new Button(MessageBundle.getMessage("table.refresh"));
         progressIndicator = new ProgressIndicator();
         progressIndicator.setVisible(false);
         progressIndicator.setPrefSize(20, 20);
 
-        statusLabel = new Label(MessageBundle.getMessage("status.ready"));
-        statusLabel.getStyleClass().add("status-label");
-
-        controlsBox.getChildren().addAll(new Label("Suche:"), searchField, refreshButton, progressIndicator);
-
-        // Table list
-        Label tableLabel = new Label(MessageBundle.getMessage("table.selection") + ":");
-        tableListView = new ListView<>();
-        tableListView.setPrefHeight(180);
-        tableListView.getStyleClass().add("table-list");
-
-        // Column information table
-        Label columnLabel = new Label(MessageBundle.getMessage("table.columns") + ":");
-        setupColumnTableView();
-
-        // Data preview table
-        Label previewLabel = new Label(MessageBundle.getMessage("table.data.preview") + " (erste 100 Zeilen):");
-        setupPreviewTableView();
-
-        container.getChildren().addAll(
-            titleLabel,
-            controlsBox,
-            statusLabel,
-            tableLabel,
-            tableListView,
-            columnLabel,
-            columnTableView,
-            previewLabel,
-            previewTableView
-        );
-    }
-
-    private void setupColumnTableView() {
-        columnTableView = new TableView<>();
-        columnTableView.setPrefHeight(150);
-
-        // Column name
-        TableColumn<ColumnInfo, String> nameColumn = new TableColumn<>("Spaltenname");
-        nameColumn.setCellValueFactory(new PropertyValueFactory<>("columnName"));
-        nameColumn.setPrefWidth(150);
-
-        // Data type
-        TableColumn<ColumnInfo, String> typeColumn = new TableColumn<>("Typ");
-        typeColumn.setCellValueFactory(new PropertyValueFactory<>("dataType"));
-        typeColumn.setPrefWidth(100);
-
-        // Nullable
-        TableColumn<ColumnInfo, Boolean> nullableColumn = new TableColumn<>("Nullable");
-        nullableColumn.setCellValueFactory(new PropertyValueFactory<>("nullable"));
-        nullableColumn.setPrefWidth(80);
-
-        // Size
-        TableColumn<ColumnInfo, Integer> sizeColumn = new TableColumn<>("Größe");
-        sizeColumn.setCellValueFactory(new PropertyValueFactory<>("columnSize"));
-        sizeColumn.setPrefWidth(80);
-
-        columnTableView.getColumns().addAll(nameColumn, typeColumn, nullableColumn, sizeColumn);
-    }
-
-    private void setupPreviewTableView() {
-        previewTableView = new TableView<>();
-        previewTableView.setPrefHeight(200);
-        previewTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        // Initialize modular components
+        tableListComponent = new TableListComponent();
+        tablePreviewComponent = new TablePreviewComponent();
     }
 
     private void setupLayout() {
+        container.getChildren().addAll(
+            titleLabel,
+            statusLabel,
+            tableListComponent.getContainer(),
+            tablePreviewComponent.getContainer()
+        );
+
         container.getStyleClass().add("content-panel");
     }
 
-    private void setupEventHandlers() {
-        // Table selection handler
-        tableListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
-                selectTable(newVal);
-            }
-        });
+    private void setupComponentCommunication() {
+        // Table selection communication
+        tableListComponent.setOnTableSelected(this::selectTable);
 
-        // Search filter handler
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
-            filterTables(newVal);
-        });
-
-        // Refresh button handler
-        refreshButton.setOnAction(e -> refreshTables());
+        // Status update callbacks
+        tableListComponent.setStatusUpdateCallback(this::updateStatus);
+        tablePreviewComponent.setStatusUpdateCallback(this::updateStatus);
     }
 
-    public void setDatabaseManager(DatabaseManager databaseManager) {
-        this.databaseManager = databaseManager;
-        refreshTables();
-    }
-
-    public void refreshTables() {
-        if (databaseManager == null || !databaseManager.isConnected()) {
-            updateStatus("Keine Datenbankverbindung");
-            return;
-        }
-
-        setLoading(true);
-        updateStatus("Lade Tabellen...");
-
-        Task<List<String>> loadTablesTask = new Task<List<String>>() {
-            @Override
-            protected List<String> call() throws Exception {
-                logger.info("Loading table names from database");
-                return databaseManager.getTableNames();
-            }
-
-            @Override
-            protected void succeeded() {
-                Platform.runLater(() -> {
-                    List<String> tables = getValue();
-                    tableListView.getItems().clear();
-                    tableListView.getItems().addAll(tables);
-                    updateStatus(tables.size() + " Tabellen gefunden");
-                    setLoading(false);
-                    logger.info("Loaded {} tables successfully", tables.size());
-                });
-            }
-
-            @Override
-            protected void failed() {
-                Platform.runLater(() -> {
-                    updateStatus("Fehler beim Laden der Tabellen: " + getException().getMessage());
-                    setLoading(false);
-                    logger.error("Failed to load tables", getException());
-                });
-            }
-        };
-
-        Thread loadThread = new Thread(loadTablesTask);
-        loadThread.setDaemon(true);
-        loadThread.start();
-    }
-
+    /**
+     * Handle table selection from TableListComponent
+     */
     private void selectTable(String tableName) {
         if (databaseManager == null || !databaseManager.isConnected()) {
+            updateStatus("Nicht mit Datenbank verbunden");
             return;
         }
 
@@ -218,22 +123,23 @@ public class TableSelectionPanel {
                 currentTableColumns = databaseManager.getTableColumns(tableName);
                 logger.info("Loaded {} columns for table {}", currentTableColumns.size(), tableName);
 
-                // Load preview data (first 100 rows)
-                QueryResult previewData = databaseManager.executeQuery(
-                    "SELECT TOP 100 * FROM " + tableName
+                // Get total record count for pagination
+                QueryResult countResult = databaseManager.executeQuery(
+                    "SELECT COUNT(*) as total_count FROM " + tableName
                 );
 
+                long totalRecords = 0;
+                if (!countResult.getData().isEmpty()) {
+                    Object countValue = countResult.getData().get(0).get("total_count");
+                    totalRecords = countValue instanceof Number ? ((Number) countValue).longValue() : 0;
+                }
+                final long finalTotalRecords = totalRecords;
+
                 Platform.runLater(() -> {
-                    // Update column table
-                    ObservableList<ColumnInfo> columnData = FXCollections.observableArrayList(currentTableColumns);
-                    columnTableView.setItems(columnData);
+                    // Initialize table preview with total record count
+                    tablePreviewComponent.loadTablePreview(tableName, finalTotalRecords);
 
-                    // Update preview table
-                    setupPreviewTableColumns(previewData);
-                    ObservableList<Map<String, Object>> previewRows = FXCollections.observableArrayList(previewData.getData());
-                    previewTableView.setItems(previewRows);
-
-                    updateStatus("Tabelle '" + tableName + "' geladen (" + previewData.getData().size() + " Zeilen Vorschau)");
+                    updateStatus("Tabelle '" + tableName + "' geladen (" + finalTotalRecords + " Datensätze total)");
                     setLoading(false);
 
                     // Notify parent that table was selected
@@ -260,272 +166,136 @@ public class TableSelectionPanel {
         loadThread.start();
     }
 
-    private void setupPreviewTableColumns(QueryResult queryResult) {
-        previewTableView.getColumns().clear();
+    /**
+     * Show filtered data in preview component
+     */
+    public void showFilteredData(String tableName, String whereClause) {
+        if (tablePreviewComponent != null) {
+            tablePreviewComponent.showFilteredData(tableName, whereClause);
+        }
+    }
 
-        for (String columnName : queryResult.getColumnNames()) {
-            TableColumn<Map<String, Object>, Object> column = new TableColumn<>(columnName);
-            column.setCellValueFactory(cellData -> {
-                Object value = cellData.getValue().get(columnName);
-                return new javafx.beans.property.SimpleObjectProperty<>(value);
-            });
-
-            // Format cell display
-            column.setCellFactory(col -> new TableCell<Map<String, Object>, Object>() {
+    /**
+     * Clear any active filters and return to normal table view
+     */
+    public void clearFilters() {
+        if (selectedTableName != null && tablePreviewComponent != null) {
+            // Get total record count again
+            Task<Void> clearFilterTask = new Task<Void>() {
                 @Override
-                protected void updateItem(Object item, boolean empty) {
-                    super.updateItem(item, empty);
-                    if (empty || item == null) {
-                        setText(null);
-                    } else {
-                        setText(item.toString());
+                protected Void call() throws Exception {
+                    QueryResult countResult = databaseManager.executeQuery(
+                        "SELECT COUNT(*) as total_count FROM " + selectedTableName
+                    );
+
+                    long totalRecords = 0;
+                    if (!countResult.getData().isEmpty()) {
+                        Object countValue = countResult.getData().get(0).get("total_count");
+                        totalRecords = countValue instanceof Number ? ((Number) countValue).longValue() : 0;
                     }
+                    final long finalTotalRecords = totalRecords;
+
+                    Platform.runLater(() -> {
+                        tablePreviewComponent.loadTablePreview(selectedTableName, finalTotalRecords);
+                        updateStatus("Filter entfernt - zurück zur Originalansicht");
+                    });
+
+                    return null;
                 }
-            });
 
-            column.setPrefWidth(120);
-            previewTableView.getColumns().add(column);
+                @Override
+                protected void failed() {
+                    Platform.runLater(() -> {
+                        updateStatus("Fehler beim Entfernen der Filter: " + getException().getMessage());
+                        logger.error("Failed to clear filters", getException());
+                    });
+                }
+            };
+
+            Thread clearThread = new Thread(clearFilterTask);
+            clearThread.setDaemon(true);
+            clearThread.start();
+        } else {
+            updateStatus("Filter entfernt");
         }
     }
 
-    private void filterTables(String searchText) {
-        if (searchText == null || searchText.trim().isEmpty()) {
-            // Show all tables
-            refreshTables();
-            return;
-        }
-
-        String lowerSearchText = searchText.toLowerCase();
-        ObservableList<String> filteredTables = FXCollections.observableArrayList();
-
-        for (String table : tableListView.getItems()) {
-            if (table.toLowerCase().contains(lowerSearchText)) {
-                filteredTables.add(table);
-            }
-        }
-
-        tableListView.setItems(filteredTables);
-        updateStatus(filteredTables.size() + " Tabellen gefunden (gefiltert)");
-    }
-
+    // Helper methods
     private void updateStatus(String message) {
-        if (statusLabel != null) {
-            Platform.runLater(() -> statusLabel.setText(message));
-        }
-        logger.debug("Status updated: {}", message);
+        statusLabel.setText(message);
     }
 
     private void setLoading(boolean loading) {
-        Platform.runLater(() -> {
-            progressIndicator.setVisible(loading);
-            refreshButton.setDisable(loading);
-        });
+        progressIndicator.setVisible(loading);
     }
 
-    public List<ColumnInfo> getTableColumns() {
-        return currentTableColumns;
+    // Public API
+    public Node getNode() {
+        return container;
+    }
+
+    public void setDatabaseManager(DatabaseManager databaseManager) {
+        this.databaseManager = databaseManager;
+
+        // Distribute database manager to components
+        tableListComponent.setDatabaseManager(databaseManager);
+        tablePreviewComponent.setDatabaseManager(databaseManager);
+    }
+
+    public void refreshTables() {
+        if (tableListComponent != null) {
+            tableListComponent.refreshTables();
+        }
     }
 
     public void setOnTableSelected(Consumer<String> onTableSelected) {
         this.onTableSelected = onTableSelected;
     }
 
-    public Node getNode() {
-        return container;
+    public String getSelectedTableName() {
+        return selectedTableName;
+    }
+
+    public List<ColumnInfo> getCurrentTableColumns() {
+        return currentTableColumns;
+    }
+
+    public TablePreviewComponent getTablePreviewComponent() {
+        return tablePreviewComponent;
+    }
+
+    public TableListComponent getTableListComponent() {
+        return tableListComponent;
     }
 
     /**
-     * Show filtered data in preview table with smart loading
+     * Get currently selected table from table list
      */
-    public void showFilteredData(String tableName, String whereClause) {
-        if (databaseManager == null || !databaseManager.isConnected()) {
-            updateStatus("Nicht mit Datenbank verbunden");
-            return;
-        }
-
-        this.selectedTableName = tableName;
-        setLoading(true);
-
-        Task<DatabaseManager.FilteredDataResult> task = new Task<>() {
-            @Override
-            protected DatabaseManager.FilteredDataResult call() {
-                return databaseManager.getFilteredData(tableName, whereClause, 0, 2000);
-            }
-        };
-
-        task.setOnSucceeded(event -> {
-            Platform.runLater(() -> {
-                DatabaseManager.FilteredDataResult result = task.getValue();
-                handleFilteredDataResult(result, whereClause);
-                setLoading(false);
-            });
-        });
-
-        task.setOnFailed(event -> {
-            Platform.runLater(() -> {
-                Throwable exception = task.getException();
-                logger.error("Failed to load filtered data", exception);
-                updateStatus("Fehler beim Laden der gefilterten Daten: " + exception.getMessage());
-                setLoading(false);
-            });
-        });
-
-        Thread thread = new Thread(task);
-        thread.setDaemon(true);
-        thread.start();
-    }
-
-    private void handleFilteredDataResult(DatabaseManager.FilteredDataResult result, String whereClause) {
-        if (!result.isSuccess()) {
-            updateStatus("Fehler: " + result.getMessage());
-            return;
-        }
-
-        long totalCount = result.getTotalCount();
-        int currentCount = result.getCurrentCount();
-
-        // Smart Loading Logic
-        if (totalCount == 0) {
-            updateStatus("Keine Datensätze gefunden für die angegebenen Filter");
-            clearPreviewTable();
-            return;
-        }
-
-        if (totalCount > 10000) {
-            updateStatus(String.format("WARNUNG: %,d Datensätze gefunden! Bitte Filter eingrenzen (zu viele Ergebnisse)", totalCount));
-            showFilterWarningDialog(totalCount);
-            return;
-        }
-
-        if (totalCount <= 2000) {
-            // Load all data
-            updateStatus(String.format("Filter aktiv: %,d Datensätze geladen (alle angezeigt)", totalCount));
-            updateFilteredPreviewTable(result.getData());
-        } else {
-            // Partial load with "Load More" option
-            updateStatus(String.format("Filter aktiv: %,d von %,d Datensätzen geladen", currentCount, totalCount));
-            updateFilteredPreviewTable(result.getData());
-            showLoadMoreButton(whereClause, currentCount, totalCount);
-        }
-    }
-
-    private void updateFilteredPreviewTable(List<Map<String, Object>> data) {
-        if (data == null || data.isEmpty()) {
-            clearPreviewTable();
-            return;
-        }
-
-        Platform.runLater(() -> {
-            // Clear existing columns
-            previewTableView.getColumns().clear();
-
-            // Get column names from first row
-            Map<String, Object> firstRow = data.get(0);
-            for (String columnName : firstRow.keySet()) {
-                TableColumn<Map<String, Object>, Object> column = new TableColumn<>(columnName);
-                column.setCellValueFactory(cellData -> {
-                    Object value = cellData.getValue().get(columnName);
-                    return new javafx.beans.property.SimpleObjectProperty<>(value);
-                });
-                column.setPrefWidth(120);
-                previewTableView.getColumns().add(column);
-            }
-
-            // Convert to observable list
-            ObservableList<Map<String, Object>> observableData = FXCollections.observableArrayList(data);
-            previewTableView.setItems(observableData);
-        });
-    }
-
-    private void clearPreviewTable() {
-        Platform.runLater(() -> {
-            previewTableView.getColumns().clear();
-            previewTableView.setItems(FXCollections.observableArrayList());
-        });
-    }
-
-    private void showFilterWarningDialog(long totalCount) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Zu viele Ergebnisse");
-            alert.setHeaderText(String.format("%,d Datensätze gefunden", totalCount));
-            alert.setContentText("Bitte schränken Sie Ihre Filter ein, um die Leistung zu verbessern.\n\n" +
-                               "Empfohlen: Weniger als 10.000 Datensätze");
-
-            ButtonType restrictFilters = new ButtonType("Filter einschränken");
-            ButtonType forceLoad = new ButtonType("Trotzdem laden (kann langsam sein)");
-            ButtonType cancel = new ButtonType("Abbrechen", ButtonBar.ButtonData.CANCEL_CLOSE);
-
-            alert.getButtonTypes().setAll(restrictFilters, forceLoad, cancel);
-            alert.showAndWait();
-        });
-    }
-
-    private void showLoadMoreButton(String whereClause, int currentCount, long totalCount) {
-        // This would be implemented to show a "Load More" button
-        // For now, just log the need for it
-        logger.info("Need to implement Load More button: {}/{} loaded", currentCount, totalCount);
-        // TODO: Add "Load More" button to UI
+    public String getSelectedTable() {
+        return tableListComponent != null ? tableListComponent.getSelectedTable() : null;
     }
 
     /**
-     * Load original table preview data without filters
+     * Programmatically select a table
      */
-    private void loadTablePreview(String tableName) {
-        if (databaseManager == null || !databaseManager.isConnected()) {
-            updateStatus("Nicht mit Datenbank verbunden");
-            return;
+    public void selectTableByName(String tableName) {
+        if (tableListComponent != null) {
+            tableListComponent.selectTable(tableName);
         }
-
-        updateStatus("Lade ursprüngliche Daten für: " + tableName);
-        setLoading(true);
-
-        Task<Void> loadPreviewTask = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                logger.info("Loading original preview data for table: {}", tableName);
-
-                // Load original preview data (first 100 rows, no filters)
-                QueryResult previewData = databaseManager.executeQuery(
-                    "SELECT TOP 100 * FROM " + tableName
-                );
-
-                Platform.runLater(() -> {
-                    // Update preview table with original data
-                    setupPreviewTableColumns(previewData);
-                    ObservableList<Map<String, Object>> previewRows = FXCollections.observableArrayList(previewData.getData());
-                    previewTableView.setItems(previewRows);
-
-                    updateStatus("Filter entfernt - " + previewData.getData().size() + " ursprüngliche Datensätze angezeigt");
-                    setLoading(false);
-                });
-
-                return null;
-            }
-
-            @Override
-            protected void failed() {
-                Platform.runLater(() -> {
-                    updateStatus("Fehler beim Laden der ursprünglichen Daten: " + getException().getMessage());
-                    setLoading(false);
-                    logger.error("Failed to load original preview data for table: " + tableName, getException());
-                });
-            }
-        };
-
-        Thread loadThread = new Thread(loadPreviewTask);
-        loadThread.setDaemon(true);
-        loadThread.start();
     }
 
     /**
-     * Clear any active filters and show original table data
+     * Clear all selections and reset components
      */
-    public void clearFilters() {
-        if (selectedTableName != null) {
-            loadTablePreview(selectedTableName);
-        } else {
-            updateStatus("Filter entfernt");
+    public void clearAll() {
+        if (tableListComponent != null) {
+            tableListComponent.clearSelection();
         }
+        if (tablePreviewComponent != null) {
+            tablePreviewComponent.clearPreview();
+        }
+        selectedTableName = null;
+        currentTableColumns = null;
+        updateStatus("Bereit");
     }
 }
