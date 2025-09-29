@@ -20,7 +20,7 @@ public class JasperReportsApp extends Application {
         logger.info("Starting JasperReports Desktop Application...");
 
         try {
-            // Initialize application data directory
+            // Initialize application data directory&&
             String appDataDir = FileUtils.ensureAppDataDirectory();
             logger.info("Application data directory: {}", appDataDir);
 
